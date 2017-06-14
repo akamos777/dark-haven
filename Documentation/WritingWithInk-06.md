@@ -1,4 +1,190 @@
-## 6) Long example: crime scene
+## 5) Advanced List Operations
+
+The above section covers basic comparisons. There are a few more powerful features as well, but - as anyone familiar with mathematical   sets will know - things begin to get a bit fiddly. So this section comes with an 'advanced' warning.
+
+A lot of the features in this section won't be necessary for most games.
+
+### Comparing lists
+
+We can compare lists less than exactly using `>`, `<`, `>=` and `<=`. Be warned! The definitions we use are not exactly standard fare. They are based on comparing the numerical value of the elements in the lists being tested.
+
+#### "Distinctly bigger than"
+
+`LIST_A > LIST_B` means "the smallest value in A is bigger than the largest values in B": in other words, if put on a number line, the entirety of A is to the right of the entirety of B. `<` does the same in reverse.
+
+#### "Definitely never smaller than"
+
+`LIST_A >= LIST_B` means - take a deep breath now - "the smallest value in A is at least the smallest value in B, and the largest value in A is at least the largest value in B". That is, if drawn on a number line, the entirety of A is either above B or overlaps with it, but B does not extend higher than A.
+
+Note that `LIST_A > LIST_B` implies `LIST_A != LIST_B`, and `LIST_A >= LIST_B` allows `LIST_A == LIST_B` but precludes `LIST_A < LIST_B`, as you might hope.
+
+#### Health warning!
+
+`LIST_A >= LIST_B` is *not* the same as `LIST_A > LIST_B or LIST_A == LIST_B`.
+
+The moral is, don't use these unless you have a clear picture in your mind.
+
+### Inverting lists
+
+A list can be "inverted", which is the equivalent of going through the accommodation in/out name-board and flipping every switch to the opposite of what it was before.
+
+	LIST GuardsOnDuty = (Smith), (Jones), Carter, Braithwaite
+
+	=== function changingOfTheGuard
+		~ GuardsOnDuty = LIST_INVERT(GuardsOnDuty)
+
+
+Note that `LIST_INVERT` on an empty list will return a null value, if the game doesn't have enough context to know what invert. If you need to handle that case, it's safest to do it by hand:
+
+	=== function changingOfTheGuard
+		{!GuardsOnDuty: // "is GuardsOnDuty empty right now?"
+			~ GuardsOnDuty = LIST_ALL(Smith)
+		- else:
+			~ GuardsOnDuty = LIST_INVERT(GuardsOnDuty)
+		}
+
+#### Footnote
+
+The syntax for inversion was originally `~ list` but we changed it because otherwise the line
+
+	~ list = ~ list
+
+was not only functional, but actually caused list to invert itself, which seemed excessively perverse.
+
+### Intersecting lists
+
+The `has` or `?` operator is, somewhat more formally, the "are you a subset of me" operator, ⊇, which includes the sets being equal, but which doesn't include if the larger set doesn't entirely contain the smaller set.
+
+To test for "some overlap" between lists, we use the overlap operator, `^`, to get the *intersection*.
+
+	LIST CoreValues = strength, courage, compassion, greed, nepotism, self_belief, delusions_of_godhood
+	VAR desiredValues = (strength, courage, compassion, self_belief )
+	VAR actualValues =  ( greed, nepotism, self_belief, delusions_of_godhood )
+
+	{desiredValues ^ actualValues} // prints "self_belief"
+
+The result is a new list, so you can test it:
+
+	{desiredValues ^ actualValues: The new president has at least one desirable quality.}
+
+	{LIST_COUNT(desiredValues ^ actualValues) == 1: Correction, the new president has only one desirable quality. {desiredValues ^ actualValues == self_belief: It's the scary one.}}
+
+
+
+
+## 6) Multi-list Lists
+
+
+So far, all of our examples have included one large simplification, again - that the values in a list variable have to all be from the same list family. But they don't.
+
+This allows us to use lists - which have so far played the role of state-machines and flag-trackers - to also act as general properties, which is useful for world modelling.
+
+This is our inception moment. The results are powerful, but also more like "real code" than anything that's come before.
+
+### Lists to track objects
+
+For instance, we might define:
+
+	LIST Characters = Alfred, Batman, Robin
+	LIST Props = champagne_glass, newspaper
+
+	VAR BallroomContents = (Alfred, Batman, newspaper)
+	VAR HallwayContents = (Robin, champagne_glass)
+
+We could then describe the contents of any room by testing its state:
+
+	=== function describe_room(roomState)
+		{ roomState ? Alfred: Alfred is here, standing quietly in a corner. } { roomState ? Batman: Batman's presence dominates all. } { roomState ? Robin: Robin is all but forgotten. }
+		<> { roomState ? champagne_glass: A champagne glass lies discarded on the floor. } { roomState ? newspaper: On one table, a headline blares out WHO IS THE BATMAN? AND *WHO* IS HIS BARELY-REMEMBER ASSISTANT? }
+
+So then:
+
+	{ describe_room(BallroomContents) }
+
+produces:
+
+	Alfred is here, standing quietly in a corner. Batman's presence dominates all.
+
+	On one table, a headline blares out WHO IS THE BATMAN? AND *WHO* IS HIS BARELY-REMEMBER ASSISTANT?
+
+While:
+
+	{ describe_room(HallwayContents) }
+
+gives:
+
+	Robin is all but forgotten.
+
+	A champagne glass lies discarded on the floor.
+
+And we could have options based on combinations of things:
+
+	*	{ currentRoomState ? (Batman, Alfred) } [Talk to Alfred and Batman]
+		'Say, do you two know each other?'
+
+### Lists to track multiple states
+
+We can model devices with multiple states. Back to the kettle again...
+
+	LIST OnOff = on, off
+	LIST HotCold = cold, warm, hot
+
+	VAR kettleState = off, cold
+
+	=== function turnOnKettle() ===
+	{ kettleState ? hot:
+		You turn on the kettle, but it immediately flips off again.
+	- else:
+		The water in the kettle begins to heat up.
+		~ kettleState -= off
+		~ kettleState += on
+		// note we avoid "=" as it'll remove all existing states
+	}
+
+	=== function can_make_tea() ===
+		~ return kettleState ? (hot, off)
+
+These mixed states can make changing state a bit trickier, as the off/on above demonstrates, so the following helper function can be useful.
+
+ 	=== function changeStateTo(ref stateVariable, stateToReach)
+ 		// remove all states of this type
+ 		~ stateVariable -= LIST_ALL(stateToReach)
+ 		// put back the state we want
+ 		~ stateVariable += stateToReach
+
+ which enables code like:
+
+ 	~ changeState(kettleState, on)
+ 	~ changeState(kettleState, warm)
+
+
+
+
+#### How does this affect queries?
+
+The queries given above mostly generalise nicely to multi-valued lists
+
+    LIST Letters = a,b,c
+    LIST Numbers = one, two, three
+
+    VAR mixedList = (a, three, c)
+
+	{LIST_ALL(mixedList)}   // a, one, b, two, c, three
+    {LIST_COUNT(mixedList)} // 3
+    {LIST_MIN(mixedList)}   // a
+    {LIST_MAX(mixedList)}   // three or c, albeit unpredictably
+
+    {mixedList ? (a,b) }        // false
+    {mixedList ^ LIST_ALL(a)}   // a, c
+
+    { mixedList >= (one, a) }   // true
+    { mixedList < (three) }     // false
+
+	{ LIST_INVERT(mixedList) }            // one, b, two
+
+
+
+## 7) Long example: crime scene
 
 Finally, here's a long example, demonstrating a lot of ideas from this section in action. You might want to try playing it before reading through to better understand the various moving parts.
 
@@ -324,7 +510,7 @@ Finally, here's a long example, demonstrating a lot of ideas from this section i
 	    }
 	    -> END
 
-## 7) Summary
+## 8) Summary
 
 To summarise a difficult section, **ink**'s list construction provides:
 
